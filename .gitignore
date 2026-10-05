@@ -1,0 +1,9 @@
+build/
+.pico-sdk/
+*.uf2
+*.elf
+*.hex
+*.bin
+*.dis
+*.map
+.vscode/
