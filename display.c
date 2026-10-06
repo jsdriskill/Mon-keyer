@@ -1,5 +1,6 @@
 #include "display.h"
 #include "font5x8.h"
+#include "font_large.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -75,56 +76,53 @@ void display_render_text(const char *str, uint8_t x, uint8_t y) {
     }
 }
 
-#define DISPLAY_W        128
-#define DISPLAY_H        64
+#define SCREEN_W        128
+#define SCREEN_H        64
 #define MODE_LINE_Y      56   /* bottom text line (one 8-px page) */
-#define GLYPH_W          5
-#define GLYPH_H          7    /* font5x8 glyphs use 7 rows */
-#define NUMBER_MARGIN    1    /* blank rows kept above/below the number */
+#define NUMBER_GAP       4    /* pixels between large digits */
+#define NUMBER_MAX_DIGITS 3   /* wpm is uint8_t: at most 255 */
 
 static void set_pixel(int x, int y) {
-    if (x < 0 || x >= DISPLAY_W || y < 0 || y >= DISPLAY_H) {
+    if (x < 0 || x >= SCREEN_W || y < 0 || y >= SCREEN_H) {
         return;
     }
-    frame_buffer[(y / 8) * DISPLAY_W + x] |= (uint8_t)(1u << (y % 8));
+    frame_buffer[(y / 8) * SCREEN_W + x] |= (uint8_t)(1u << (y % 8));
 }
 
-/* Draw str scaled up by the largest integer factor that fits in the
- * area above the mode line, centered horizontally and vertically. */
+/* Draw one large digit with its top-left corner at (x, y). */
+static void draw_large_digit(int digit, int x, int y) {
+    const uint8_t *bits = font_large_digits[digit];
+    for (int col = 0; col < LARGE_FONT_W; col++) {
+        for (int row = 0; row < LARGE_FONT_H; row++) {
+            if ((bits[col * LARGE_FONT_BYTES_PER_COL + row / 8] >> (row % 8)) & 1) {
+                set_pixel(x + col, y + row);
+            }
+        }
+    }
+}
+
+/* Draw a string of digits in the large font, centered horizontally and
+ * vertically in the area above the mode line. Digits sit in fixed-width
+ * cells, so the number does not shift as the speed changes. */
 static void render_number_centered(const char *str, int area_h) {
     int n = (int)strlen(str);
+    if (n > NUMBER_MAX_DIGITS) {
+        n = NUMBER_MAX_DIGITS;
+    }
     if (n == 0) {
         return;
     }
-    int scale_h = (area_h - 2 * NUMBER_MARGIN) / GLYPH_H;
-    int scale_w = DISPLAY_W / ((GLYPH_W + 1) * n - 1);
-    int scale = scale_h < scale_w ? scale_h : scale_w;
-    if (scale < 1) {
-        scale = 1;
+    int gap = NUMBER_GAP;
+    if (n > 1 && n * LARGE_FONT_W + (n - 1) * gap > SCREEN_W) {
+        gap = (SCREEN_W - n * LARGE_FONT_W) / (n - 1);   /* 3 digits: no gap */
     }
-    int total_w = scale * ((GLYPH_W + 1) * n - 1);
-    int x0 = (DISPLAY_W - total_w) / 2;
-    int y0 = (area_h - GLYPH_H * scale) / 2;
+    int total_w = n * LARGE_FONT_W + (n - 1) * gap;
+    int x0 = (SCREEN_W - total_w) / 2;
+    int y0 = (area_h - LARGE_FONT_H) / 2;
 
     for (int i = 0; i < n; i++) {
-        unsigned char c = (unsigned char)str[i];
-        if (c < 32 || c > 126) {
-            c = '?';
-        }
-        const uint8_t *glyph = font5x8[c - 32];
-        for (int col = 0; col < GLYPH_W; col++) {
-            for (int row = 0; row < GLYPH_H; row++) {
-                if (!((glyph[col] >> row) & 1)) {
-                    continue;
-                }
-                int px = x0 + (i * (GLYPH_W + 1) + col) * scale;
-                int py = y0 + row * scale;
-                for (int dy = 0; dy < scale; dy++) {
-                    for (int dx = 0; dx < scale; dx++) {
-                        set_pixel(px + dx, py + dy);
-                    }
-                }
-            }
+        if (str[i] >= '0' && str[i] <= '9') {
+            draw_large_digit(str[i] - '0', x0 + i * (LARGE_FONT_W + gap), y0);
         }
     }
 }
