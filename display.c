@@ -80,11 +80,9 @@ void display_update_ui(bool menu_active, uint8_t menu_item) {
     char line[32];
 
     if (!menu_active) {
-        snprintf(line, sizeof(line), "CW SPEED: %d WPM", sys_config.wpm);
+        snprintf(line, sizeof(line), "%d", sys_config.wpm);
         display_render_text(line, 0, 0);
-        snprintf(line, sizeof(line), "MODE: %s", mode_name(sys_config.mode));
-        display_render_text(line, 0, 16);
-        display_render_text("CLICK FOR MENU", 0, 48);
+        display_render_text(mode_name(sys_config.mode), 0, 56);
     } else {
         display_render_text("SETUP MENU", 0, 0);
         switch (menu_item) {
