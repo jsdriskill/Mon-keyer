@@ -75,14 +75,68 @@ void display_render_text(const char *str, uint8_t x, uint8_t y) {
     }
 }
 
+#define DISPLAY_W        128
+#define DISPLAY_H        64
+#define MODE_LINE_Y      56   /* bottom text line (one 8-px page) */
+#define GLYPH_W          5
+#define GLYPH_H          7    /* font5x8 glyphs use 7 rows */
+#define NUMBER_MARGIN    1    /* blank rows kept above/below the number */
+
+static void set_pixel(int x, int y) {
+    if (x < 0 || x >= DISPLAY_W || y < 0 || y >= DISPLAY_H) {
+        return;
+    }
+    frame_buffer[(y / 8) * DISPLAY_W + x] |= (uint8_t)(1u << (y % 8));
+}
+
+/* Draw str scaled up by the largest integer factor that fits in the
+ * area above the mode line, centered horizontally and vertically. */
+static void render_number_centered(const char *str, int area_h) {
+    int n = (int)strlen(str);
+    if (n == 0) {
+        return;
+    }
+    int scale_h = (area_h - 2 * NUMBER_MARGIN) / GLYPH_H;
+    int scale_w = DISPLAY_W / ((GLYPH_W + 1) * n - 1);
+    int scale = scale_h < scale_w ? scale_h : scale_w;
+    if (scale < 1) {
+        scale = 1;
+    }
+    int total_w = scale * ((GLYPH_W + 1) * n - 1);
+    int x0 = (DISPLAY_W - total_w) / 2;
+    int y0 = (area_h - GLYPH_H * scale) / 2;
+
+    for (int i = 0; i < n; i++) {
+        unsigned char c = (unsigned char)str[i];
+        if (c < 32 || c > 126) {
+            c = '?';
+        }
+        const uint8_t *glyph = font5x8[c - 32];
+        for (int col = 0; col < GLYPH_W; col++) {
+            for (int row = 0; row < GLYPH_H; row++) {
+                if (!((glyph[col] >> row) & 1)) {
+                    continue;
+                }
+                int px = x0 + (i * (GLYPH_W + 1) + col) * scale;
+                int py = y0 + row * scale;
+                for (int dy = 0; dy < scale; dy++) {
+                    for (int dx = 0; dx < scale; dx++) {
+                        set_pixel(px + dx, py + dy);
+                    }
+                }
+            }
+        }
+    }
+}
+
 void display_update_ui(bool menu_active, uint8_t menu_item) {
     memset(frame_buffer, 0x00, sizeof(frame_buffer));
     char line[32];
 
     if (!menu_active) {
         snprintf(line, sizeof(line), "%d", sys_config.wpm);
-        display_render_text(line, 0, 0);
-        display_render_text(mode_name(sys_config.mode), 0, 56);
+        render_number_centered(line, MODE_LINE_Y);
+        display_render_text(mode_name(sys_config.mode), 0, MODE_LINE_Y);
     } else {
         display_render_text("SETUP MENU", 0, 0);
         switch (menu_item) {
