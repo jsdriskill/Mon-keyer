@@ -14,6 +14,13 @@
 #define PIN_ENC_B          7
 #define PIN_ENC_SW         8
 
+/* Quadrature transitions per physical detent (click). Most mechanical
+ * encoders (e.g. EC11 with 20 detents) give 4; some give 2 (rests at both
+ * 00 and 11) or 1. If one click moves the value by N, set this to N. */
+#ifndef ENC_STEPS_PER_DETENT
+#define ENC_STEPS_PER_DETENT 4
+#endif
+
 #define I2C_PORT           i2c0
 #define PIN_I2C_SDA        12
 #define PIN_I2C_SCL        13
