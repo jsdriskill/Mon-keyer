@@ -1,4 +1,4 @@
-# KA Keyer (Raspberry Pi Pico)
+# Mon Keyer (Raspberry Pi Pico)
 
 CW paddle keyer for RP2040 with SSD1306 UI, rotary encoder setup, flash-backed settings, and a USB composite device: K1EL WinKeyer v2-style serial port, a USB audio source that mirrors the sidetone, and USB MIDI key events.
 
@@ -29,17 +29,17 @@ cmake --build build
 
 For Pico 2, pass `-DPICO_BOARD=pico2`.
 
-Flash `build/ka_keyer.uf2` by holding BOOTSEL, plugging USB, and copying the UF2.
+Flash `build/mon_keyer.uf2` by holding BOOTSEL, plugging USB, and copying the UF2.
 
 ## USB
 
-The keyer enumerates as one composite device ("KA Keyer"):
+The keyer enumerates as one composite device ("Mon Keyer"):
 
 | Function | What the host sees |
 | --- | --- |
 | Serial (CDC) | WinKeyer v2-style port |
-| Audio | A mono 48 kHz, 16-bit USB microphone ("KA Keyer Sidetone", UAC2). It carries the same sidetone as the buzzer: same frequency, silent when sidetone is disabled in the menu, 4 ms attack/release ramps. Windows needs 10 (1703) or later; macOS and Linux work out of the box. |
-| MIDI | A class-compliant MIDI device ("KA Keyer MIDI") |
+| Audio | A mono 48 kHz, 16-bit USB microphone ("Mon Keyer Sidetone", UAC2). It carries the same sidetone as the buzzer: same frequency, silent when sidetone is disabled in the menu, 4 ms attack/release ramps. Windows needs 10 (1703) or later; macOS and Linux work out of the box. |
+| MIDI | A class-compliant MIDI device ("Mon Keyer MIDI") |
 
 ### MIDI messages
 

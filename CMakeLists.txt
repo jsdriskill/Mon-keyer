@@ -35,11 +35,11 @@ set(PICO_BOARD pico CACHE STRING "Board type")
 
 include(pico_sdk_import.cmake)
 
-project(ka_keyer C CXX ASM)
+project(mon_keyer C CXX ASM)
 
 pico_sdk_init()
 
-add_executable(ka_keyer
+add_executable(mon_keyer
     main.c
     keyer.c
     winkeyer.c
@@ -50,9 +50,9 @@ add_executable(ka_keyer
     usb_descriptors.c
 )
 
-target_include_directories(ka_keyer PRIVATE ${CMAKE_CURRENT_LIST_DIR})
+target_include_directories(mon_keyer PRIVATE ${CMAKE_CURRENT_LIST_DIR})
 
-target_link_libraries(ka_keyer
+target_link_libraries(mon_keyer
     pico_stdlib
     hardware_gpio
     hardware_i2c
@@ -67,9 +67,9 @@ target_link_libraries(ka_keyer
 
 # USB is handled by our own TinyUSB composite device (CDC + audio + MIDI, see
 # usb_device.c / usb_descriptors.c), not by the SDK's stdio over USB.
-pico_enable_stdio_usb(ka_keyer 0)
-pico_enable_stdio_uart(ka_keyer 0)
+pico_enable_stdio_usb(mon_keyer 0)
+pico_enable_stdio_uart(mon_keyer 0)
 
-pico_add_extra_outputs(ka_keyer)
-pico_set_program_name(ka_keyer "ka_keyer")
-pico_set_program_version(ka_keyer "0.1")
+pico_add_extra_outputs(mon_keyer)
+pico_set_program_name(mon_keyer "mon-keyer")
+pico_set_program_version(mon_keyer "0.1")
