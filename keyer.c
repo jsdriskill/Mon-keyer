@@ -3,6 +3,7 @@
 #include "pico/stdlib.h"
 #include "hardware/gpio.h"
 #include "hardware/pwm.h"
+#include "usb_device.h"
 
 typedef enum {
     STATE_IDLE,
@@ -54,11 +55,13 @@ static uint32_t dash_len(void) {
 static void key_on(void) {
     gpio_put(PIN_TX_KEY, 1);
     keyer_set_sidetone(true);
+    usb_key_event(true);    /* mirrored sidetone (USB audio) + MIDI note on */
 }
 
 static void key_off(void) {
     gpio_put(PIN_TX_KEY, 0);
     keyer_set_sidetone(false);
+    usb_key_event(false);
 }
 
 void keyer_update_sidetone_freq(void) {

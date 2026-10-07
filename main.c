@@ -6,6 +6,7 @@
 #include "display.h"
 #include "keyer.h"
 #include "winkeyer.h"
+#include "usb_device.h"
 
 #define MENU_ITEM_COUNT 8
 
@@ -20,13 +21,17 @@ static int clampi(int value, int lo, int hi) {
 }
 
 int main(void) {
-    stdio_init_all();
+    /* USB (CDC WinKeyer, audio sidetone, MIDI) runs entirely on core 1. It is
+     * started first so core 1 is ready for flash lockout before settings_init()
+     * can write defaults to flash on a first boot. */
+    usb_start();
 
     settings_init();
     encoder_init();
     display_init();
     keyer_init();
     winkeyer_init();
+    usb_app_ready();
 
     bool menu_active = false;
     uint8_t menu_item = 0;
@@ -34,7 +39,6 @@ int main(void) {
 
     while (1) {
         keyer_tick();
-        winkeyer_process();
 
         int8_t delta = encoder_get_delta();
         if (delta != 0) {

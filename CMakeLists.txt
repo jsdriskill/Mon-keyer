@@ -46,6 +46,8 @@ add_executable(ka_keyer
     display.c
     encoder.c
     flash_settings.c
+    usb_device.c
+    usb_descriptors.c
 )
 
 target_include_directories(ka_keyer PRIVATE ${CMAKE_CURRENT_LIST_DIR})
@@ -57,9 +59,15 @@ target_link_libraries(ka_keyer
     hardware_pwm
     hardware_flash
     hardware_sync
+    pico_multicore
+    pico_flash
+    pico_unique_id
+    tinyusb_device
 )
 
-pico_enable_stdio_usb(ka_keyer 1)
+# USB is handled by our own TinyUSB composite device (CDC + audio + MIDI, see
+# usb_device.c / usb_descriptors.c), not by the SDK's stdio over USB.
+pico_enable_stdio_usb(ka_keyer 0)
 pico_enable_stdio_uart(ka_keyer 0)
 
 pico_add_extra_outputs(ka_keyer)

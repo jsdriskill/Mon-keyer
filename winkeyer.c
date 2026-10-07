@@ -1,11 +1,10 @@
 #include "winkeyer.h"
 
-#include <stdio.h>
 #include "pico/stdlib.h"
-#include "pico/stdio_usb.h"
 #include "config.h"
 #include "keyer.h"
 #include "flash_settings.h"
+#include "usb_device.h"
 
 #define WK_ADMIN        0x00
 #define WK_SIDE_FREQ    0x01
@@ -22,20 +21,22 @@
 
 static uint8_t host_open = 0;
 
+/* The WinKeyer port is the USB CDC interface, served from core 1 (see
+ * usb_device.c). winkeyer_process() must only be called from there. */
 void winkeyer_init(void) {
-    stdio_set_translate_crlf(&stdio_usb, false);
+    host_open = 0;
 }
 
 static void send_resp(uint8_t val) {
-    putchar_raw(val);
+    usb_cdc_putc(val);
 }
 
 static int read_param(void) {
-    return getchar_timeout_us(10000);
+    return usb_cdc_getc_timeout_us(10000);
 }
 
 void winkeyer_process(void) {
-    int c = getchar_timeout_us(0);
+    int c = usb_cdc_getc_timeout_us(0);
     if (c == PICO_ERROR_TIMEOUT) {
         return;
     }
