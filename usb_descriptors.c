@@ -117,7 +117,7 @@ enum {
 static char const *const string_desc_arr[] = {
     (const char[]){0x09, 0x04},   /* 0: English (0x0409) */
     "Mon",                        /* 1: manufacturer */
-    "Mon Keyer",                  /* 2: product */
+    "Keyer",                      /* 2: product (Linux shows "<manufacturer> <product>") */
     NULL,                         /* 3: serial, from the flash unique id */
     "Mon Keyer Sidetone",         /* 4: audio function */
     "Mon Keyer WinKeyer",         /* 5: CDC serial */
