@@ -15,6 +15,8 @@
 #include "pico/unique_id.h"
 #include "tusb.h"
 
+#include "usb_device.h"
+
 /*
  * A combination of interfaces must have a unique product id, since the PC
  * remembers the driver binding after the first plug-in.
@@ -69,7 +71,7 @@ enum {
     ITF_NUM_TOTAL
 };
 
-#define EPNUM_AUDIO_IN    0x81
+#define EPNUM_AUDIO_IN    USB_EP_AUDIO_IN
 #define EPNUM_CDC_NOTIF   0x82
 #define EPNUM_CDC_OUT     0x03
 #define EPNUM_CDC_IN      0x83

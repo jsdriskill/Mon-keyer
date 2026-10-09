@@ -39,7 +39,13 @@
 #define CFG_TUD_AUDIO_FUNC_1_N_CHANNELS_TX              1
 #define CFG_TUD_AUDIO_EP_SZ_IN                          TUD_AUDIO_EP_SIZE(CFG_TUD_AUDIO_FUNC_1_SAMPLE_RATE, CFG_TUD_AUDIO_FUNC_1_N_BYTES_PER_SAMPLE_TX, CFG_TUD_AUDIO_FUNC_1_N_CHANNELS_TX)
 #define CFG_TUD_AUDIO_FUNC_1_EP_IN_SZ_MAX               CFG_TUD_AUDIO_EP_SZ_IN
-/* Full speed: one packet per 1 ms frame */
-#define CFG_TUD_AUDIO_FUNC_1_EP_IN_SW_BUF_SZ            (CFG_TUD_AUDIO_EP_SZ_IN)
+/* Full speed: one packet per 1 ms frame. Two packets of buffer, so a frame
+ * that is written while the previous one is still being read cannot overflow. */
+#define CFG_TUD_AUDIO_FUNC_1_EP_IN_SW_BUF_SZ            (2 * CFG_TUD_AUDIO_EP_SZ_IN)
+
+/* The sidetone is generated at exactly 48 samples per frame, so the driver's
+ * packet-size flow control (meant for sources with a free-running clock) is
+ * not needed. With it on, the driver would pad every packet to 49 samples. */
+#define CFG_TUD_AUDIO_EP_IN_FLOW_CONTROL                0
 
 #endif /* TUSB_CONFIG_H */

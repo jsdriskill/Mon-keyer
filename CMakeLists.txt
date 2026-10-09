@@ -47,6 +47,8 @@ add_executable(mon_keyer
     encoder.c
     flash_settings.c
     usb_device.c
+    usb_audio.c
+    usb_audio_hw.c
     usb_descriptors.c
 )
 

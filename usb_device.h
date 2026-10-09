@@ -22,6 +22,14 @@ void usb_start(void);
  * processing WinKeyer commands. */
 void usb_app_ready(void);
 
+/* Endpoint address of the audio IN (sidetone) endpoint; shared with the
+ * descriptors and the audio hardware helper. */
+#define USB_EP_AUDIO_IN 0x81
+
+/* Current key state, as last reported by usb_key_event(). Read by the audio
+ * synth on core 1. */
+bool usb_key_state(void);
+
 /* Key state changed (true = key down). Safe to call every tick; only core 0
  * calls it. Drives the mirrored sidetone and the MIDI note. */
 void usb_key_event(bool down);
