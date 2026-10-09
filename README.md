@@ -52,6 +52,17 @@ MIDI follows the [Vail adapter MIDI spec](https://github.com/Vail-CW/vail-adapte
 
 The keyer does its own iambic/ultimatic/bug timing, so it reports keyed elements on note 0 (as Vail adapters do in their keyer modes) rather than raw paddle contacts on notes 1 and 2. Incoming MIDI (mode, speed, keyer-type messages) is ignored: configure the keyer from its menu or over WinKeyer.
 
+### WinKeyer serial port
+
+Open the CDC port (`/dev/ttyACM0`, any baud rate), send the host-open command (`00 02`; the reply is the revision byte, 23), then:
+
+- **Text** (ASCII `0x20`-`0x7F`) is sent as Morse through the same timing as the paddles (speed, weighting, dash ratio, sidetone, key output, USB audio and MIDI). It goes through a 128 character buffer. Touching a paddle cancels whatever is queued (break-in).
+- **Status byte** (`11` + `BUSY`/`BREAKIN`/`XOFF`) is sent whenever it changes, and on request (`15`). `XOFF` is set when the buffer is more than two thirds full; the `WAIT` and `KEYED` bits are never set.
+- **Echo**: characters are echoed as they start sending when the mode register's serial-echo bit (bit 2) is set, and characters sent on the paddles are decoded and echoed when paddle echo (bit 6) is set.
+- **Setup commands implemented**: sidetone (`01`, 4000/n Hz), speed (`02`), weighting (`03`), speed pot read (`07`, always minimum), clear buffer (`0A`), mode register (`0E`: keyer mode, paddle swap, autospace, echo bits), status request (`15`), and admin open/close/reset/echo test.
+- **Accepted but ignored** (their parameter bytes are consumed so the stream stays in sync): PTT timing, speed pot setup, pause, pin config, key immediate, HSCW, Farnsworth, load defaults, first extension, key compensation, paddle switchpoint, software paddle, buffer pointer, dah ratio, PTT, and the buffered commands (key, wait, merge letters, speed change, HSCW, NOP).
+- **Not implemented**: admin calibrate, paddle and speed A2D, get values and EEPROM commands produce no reply.
+
 ### Notes
 
 - All USB runs on core 1, so the display and encoder cannot disturb the audio. Core 0 only passes the key state across.
