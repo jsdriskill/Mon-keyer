@@ -506,16 +506,19 @@ void keyer_tick(void) {
         }
     }
 
-    /* Paddle memory. The touch that started the current element must not
-     * latch a second one: start_dit() clears the latch, and a level-sensitive
-     * latch would set it again on the next tick while the paddle is still down,
-     * so even a short tap sent two elements. Latch on a fresh touch only (or
-     * from idle); a paddle still held at the end of the element repeats via
-     * the raw-level checks below. */
-    if (raw_dit && (edge_dit || current_state == STATE_IDLE)) {
+    /* Paddle memory. The paddle that started the current element must not
+     * latch a second one from the same touch: start_dit() clears the latch, and
+     * a level-sensitive latch would set it again on the next tick while the
+     * paddle is still down, so even a short tap sent two elements. That paddle
+     * latches on a fresh touch only (a paddle still held at the end of the
+     * element repeats via the raw-level checks below). The opposite paddle
+     * latches by level, so a squeeze is remembered for iambic B. From idle
+     * either paddle latches. */
+    bool idle = current_state == STATE_IDLE;
+    if (raw_dit && (edge_dit || idle || !last_was_dit)) {
         dit_latched = true;
     }
-    if (raw_dash && (edge_dash || current_state == STATE_IDLE)) {
+    if (raw_dash && (edge_dash || idle || last_was_dit)) {
         dash_latched = true;
     }
 
