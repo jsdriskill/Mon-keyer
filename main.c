@@ -8,8 +8,6 @@
 #include "winkeyer.h"
 #include "usb_device.h"
 
-#define MENU_ITEM_COUNT 8
-
 static int clampi(int value, int lo, int hi) {
     if (value < lo) {
         return lo;
@@ -70,8 +68,11 @@ int main(void) {
                 sys_config.paddle_swap = delta > 0 ? 1 : 0;
             } else if (menu_item == 6) {
                 sys_config.autospace = delta > 0 ? 1 : 0;
-            } else {
+            } else if (menu_item == 7) {
                 sys_config.first_extension = (uint8_t)clampi((int)sys_config.first_extension + delta, 0, 25);
+            } else {
+                sys_config.sidetone_vol = (uint8_t)clampi((int)sys_config.sidetone_vol + delta, SIDETONE_VOL_MIN, SIDETONE_VOL_MAX);
+                keyer_update_sidetone_volume();
             }
         }
 

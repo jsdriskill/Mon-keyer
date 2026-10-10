@@ -7,6 +7,7 @@ void keyer_init(void);
 void keyer_tick(void);
 void keyer_set_sidetone(bool active);
 void keyer_update_sidetone_freq(void);
+void keyer_update_sidetone_volume(void);
 bool keyer_is_busy(void);
 
 /* Text sending for the WinKeyer port. Core 1 calls these; they only touch

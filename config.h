@@ -45,7 +45,12 @@ typedef struct __attribute__((packed)) {
     uint8_t  paddle_swap;
     uint8_t  autospace;
     uint8_t  first_extension;
+    uint8_t  sidetone_vol;      /* 1..10 (10 = full); appended so older saved settings stay valid */
 } ConfigSettings;
+
+#define SIDETONE_VOL_MIN      1
+#define SIDETONE_VOL_MAX      10
+#define SIDETONE_VOL_DEFAULT  SIDETONE_VOL_MAX
 
 extern ConfigSettings sys_config;
 

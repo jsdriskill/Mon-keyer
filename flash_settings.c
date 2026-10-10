@@ -24,7 +24,14 @@ void settings_init(void) {
         sys_config.paddle_swap = 0;
         sys_config.autospace = 0;
         sys_config.first_extension = 0;
+        sys_config.sidetone_vol = SIDETONE_VOL_DEFAULT;
         settings_save();
+    }
+
+    /* Settings saved by older firmware have no volume byte (erased flash reads
+     * 0xFF): keep the previous loudness, which was the maximum. */
+    if (sys_config.sidetone_vol < SIDETONE_VOL_MIN || sys_config.sidetone_vol > SIDETONE_VOL_MAX) {
+        sys_config.sidetone_vol = SIDETONE_VOL_DEFAULT;
     }
 }
 

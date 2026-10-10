@@ -183,12 +183,15 @@ void display_update_ui(bool menu_active, uint8_t menu_item) {
             case 6:
                 snprintf(line, sizeof(line), "AUTOSPACE: %s", sys_config.autospace ? "ON" : "OFF");
                 break;
-            default:
+            case 7:
                 snprintf(line, sizeof(line), "1ST EXT: %dms", sys_config.first_extension);
+                break;
+            default:
+                snprintf(line, sizeof(line), "SIDE VOL: %d/10", sys_config.sidetone_vol);
                 break;
         }
         display_render_text(line, 0, 24);
-        snprintf(line, sizeof(line), "ITEM %d/8  CLICK=NEXT", menu_item + 1);
+        snprintf(line, sizeof(line), "ITEM %d/%d  CLICK=NEXT", menu_item + 1, MENU_ITEM_COUNT);
         display_render_text(line, 0, 48);
     }
     flush_next_chunk();

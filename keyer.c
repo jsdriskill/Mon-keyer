@@ -238,7 +238,17 @@ void keyer_update_sidetone_freq(void) {
 
     pwm_set_clkdiv(slice_num, (float)divider);
     pwm_set_wrap(slice_num, (uint16_t)wrap);
-    pwm_set_chan_level(slice_num, chan_num, (wrap + 1) / 2);     /* 50 % duty */
+    /* Volume: 50 % duty is the loudest a square wave gets, so volume n of 10
+     * is n/10 of that duty (1 = 10 % of maximum, 10 = maximum). */
+    uint32_t vol = sys_config.sidetone_vol;
+    if (vol < SIDETONE_VOL_MIN || vol > SIDETONE_VOL_MAX) {
+        vol = SIDETONE_VOL_MAX;
+    }
+    pwm_set_chan_level(slice_num, chan_num, ((wrap + 1) / 2) * vol / SIDETONE_VOL_MAX);
+}
+
+void keyer_update_sidetone_volume(void) {
+    keyer_update_sidetone_freq();       /* recomputes the duty from the volume */
 }
 
 void keyer_set_sidetone(bool active) {
