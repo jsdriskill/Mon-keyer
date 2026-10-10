@@ -43,16 +43,40 @@ void display_init(void) {
     memset(frame_buffer, 0, sizeof(frame_buffer));
 }
 
-static void flush_buffer(void) {
-    for (uint8_t page = 0; page < 8; page++) {
+/* The frame is sent in 32 byte chunks, at most one per call, and only when it
+ * differs from what the panel already shows. A blocking I2C transfer stalls
+ * keyer_tick() (same loop), so a whole-frame refresh (~25 ms at 400 kHz) used
+ * to stretch or delay keyed elements; one chunk takes about 1 ms. */
+#define CHUNK_BYTES   32
+#define CHUNKS_TOTAL  (sizeof(frame_buffer) / CHUNK_BYTES)
+static uint8_t sent_buffer[1024];
+static bool panel_valid;            /* false until the first full send */
+static unsigned next_chunk;
+
+static void flush_next_chunk(void) {
+    for (unsigned n = 0; n < CHUNKS_TOTAL; n++) {
+        unsigned c = (next_chunk + n) % CHUNKS_TOTAL;
+        const uint8_t *src = &frame_buffer[c * CHUNK_BYTES];
+        if (panel_valid && memcmp(src, &sent_buffer[c * CHUNK_BYTES], CHUNK_BYTES) == 0) {
+            continue;
+        }
+        unsigned page = (c * CHUNK_BYTES) / 128;
+        unsigned col = (c * CHUNK_BYTES) % 128;
         send_cmd(0xB0 + page);
-        send_cmd(0x00);
-        send_cmd(0x10);
-        uint8_t buf[129];
+        send_cmd(0x00 + (col & 0x0F));
+        send_cmd(0x10 + (col >> 4));
+        uint8_t buf[CHUNK_BYTES + 1];
         buf[0] = 0x40;
-        memcpy(&buf[1], &frame_buffer[page * 128], 128);
-        i2c_write_blocking(I2C_PORT, SSD1306_ADDR, buf, 129, false);
+        memcpy(&buf[1], src, CHUNK_BYTES);
+        i2c_write_blocking(I2C_PORT, SSD1306_ADDR, buf, sizeof(buf), false);
+        memcpy(&sent_buffer[c * CHUNK_BYTES], src, CHUNK_BYTES);
+        next_chunk = (c + 1) % CHUNKS_TOTAL;
+        if (next_chunk == 0) {
+            panel_valid = true;         /* a full pass has gone out */
+        }
+        return;
     }
+    panel_valid = true;
 }
 
 void display_render_text(const char *str, uint8_t x, uint8_t y) {
@@ -167,5 +191,5 @@ void display_update_ui(bool menu_active, uint8_t menu_item) {
         snprintf(line, sizeof(line), "ITEM %d/8  CLICK=NEXT", menu_item + 1);
         display_render_text(line, 0, 48);
     }
-    flush_buffer();
+    flush_next_chunk();
 }

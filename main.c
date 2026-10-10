@@ -21,6 +21,12 @@ static int clampi(int value, int lo, int hi) {
 }
 
 int main(void) {
+    /* Drive the TX key line low before anything slow runs, so the transmitter
+     * is never keyed by a floating or pulled-up pin during start-up. */
+    gpio_init(PIN_TX_KEY);
+    gpio_set_dir(PIN_TX_KEY, GPIO_OUT);
+    gpio_put(PIN_TX_KEY, 0);
+
     /* USB (CDC WinKeyer, audio sidetone, MIDI) runs entirely on core 1. It is
      * started first so core 1 is ready for flash lockout before settings_init()
      * can write defaults to flash on a first boot. */
@@ -84,7 +90,7 @@ int main(void) {
         }
 
         uint32_t now = to_ms_since_boot(get_absolute_time());
-        if (now - last_ui_update > 100) {
+        if (now - last_ui_update >= 10) {   /* one 1 ms display chunk per call */
             last_ui_update = now;
             display_update_ui(menu_active, menu_item);
         }
