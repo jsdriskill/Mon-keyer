@@ -52,7 +52,12 @@ MIDI follows the [Vail adapter MIDI spec](https://github.com/Vail-CW/vail-adapte
 
 The keyer does its own iambic/ultimatic/bug timing, so it reports keyed elements on note 0 (as Vail adapters do in their keyer modes) rather than raw paddle contacts on notes 1 and 2. Incoming MIDI (mode, speed, keyer-type messages) is ignored: configure the keyer from its menu or over WinKeyer.
 
-### WinKeyer serial port
+### Keyer behaviour (K3NG-compatible)
+
+Paddle element generation follows the [K3NG keyer](https://github.com/k3ng/k3ng_cw_keyer): one memory per paddle; while an element and its gap are timed only the *opposite* paddle is sampled, and both paddles are sampled by level when they end. The next element is the remembered opposite one, else a repeat. Iambic A drops the memory when a squeeze is gone by the end of the element. Ultimatic mode uses K3NG's last-touch closure logic. Weighting changes key-down time without changing the spacing (dit + gap = 2 units, dah + gap = 4 units at a 3:1 ratio, as in K3NG), and autospace adds 2 units so the character gap is 3. Differences: paddle contacts are debounced (2 ms), and bug mode only keys down for a dah that is still held. The behaviour is checked against a literal port of K3NG's logic on random paddle input (all four modes) and against its timing formulas.
+
+
+## WinKeyer serial port
 
 Open the CDC port (`/dev/ttyACM0`, any baud rate), send the host-open command (`00 02`; the reply is the revision byte, 23), then:
 

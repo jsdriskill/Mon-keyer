@@ -11,7 +11,8 @@ typedef enum {
     STATE_IDLE,
     STATE_DIT,
     STATE_DASH,
-    STATE_ELEMENT_SPACE
+    STATE_ELEMENT_SPACE,
+    STATE_AUTOSPACE
 } KeyerState;
 
 static KeyerState current_state = STATE_IDLE;
@@ -19,6 +20,7 @@ static uint32_t state_timer = 0;
 static bool dit_latched = false;
 static bool dash_latched = false;
 static bool last_was_dit = false;
+static bool bug_dah_flag;               /* bug mode: dah key-down is in progress */
 static bool first_element = true;
 static uint slice_num;
 
@@ -281,7 +283,7 @@ void keyer_init(void) {
 }
 
 bool keyer_is_busy(void) {
-    return current_state != STATE_IDLE;
+    return current_state != STATE_IDLE || bug_dah_flag;
 }
 
 static void pe_record(bool dash) {
@@ -293,12 +295,51 @@ static void pe_record(bool dash) {
     pe_len++;
 }
 
+/* ---- paddle element generation, modelled on the K3NG keyer ----
+ *
+ * K3NG keeps one memory flag per paddle ("buffer"). While it sends an element
+ * (and the gap after it) it samples only the OPPOSITE paddle's level; the
+ * paddle that started the element is not looked at until the element and gap
+ * are over, when both paddles are sampled by level. The next element is the
+ * opposite one if it is remembered, else a repeat of the same one. This
+ * port keeps those rules but runs them from keyer_tick() instead of blocking. */
+enum { SENT_NONE, SENT_DIT, SENT_DAH };
+static uint8_t being_sent = SENT_NONE;
+static bool iambic_flag;                /* A mode: both paddles were closed together */
+
+/* Lengths in ms, as K3NG: element = n * w/50 units, and the gap makes the
+ * dit+gap pair 2 units and the dah+gap pair 4 - 3 + ratio*w units, so
+ * weighting moves the key-down time without moving the character spacing. */
+static uint8_t weight_clamped(void) {
+    uint8_t w = sys_config.weighting;
+    return w < 10 ? 10 : (w > 90 ? 90 : w);
+}
+static uint32_t dit_element_ms(void) { return weighted_dit(); }
+static uint32_t dah_element_ms(void) {
+    uint8_t ratio = sys_config.dash_ratio;
+    if (ratio < 20) ratio = 20;
+    if (ratio > 40) ratio = 40;
+    return (dit_unit() * (uint32_t)ratio * weight_clamped()) / 500u;
+}
+static uint32_t dit_gap_ms(void) {
+    int32_t g = ((int32_t)dit_unit() * (100 - weight_clamped())) / 50;
+    return g > 0 ? (uint32_t)g : 0;
+}
+static uint32_t dah_gap_ms(void) {
+    int32_t g = ((int32_t)dit_unit() * (200 - 3 * (int32_t)weight_clamped())) / 50;
+    return g > 0 ? (uint32_t)g : 0;
+}
+/* extra space autospace inserts (K3NG default factor 2.0) so that the
+ * character gap totals 3 units */
+static uint32_t autospace_ms(void) { return 2 * dit_unit(); }
+
 static void start_dit(uint32_t now) {
     pe_record(false);
     dit_latched = false;
     last_was_dit = true;
+    being_sent = SENT_DIT;
     key_on();
-    uint32_t len = weighted_dit();
+    uint32_t len = dit_element_ms();
     if (first_element) {
         len += sys_config.first_extension;
         first_element = false;
@@ -311,8 +352,9 @@ static void start_dash(uint32_t now) {
     pe_record(true);
     dash_latched = false;
     last_was_dit = false;
+    being_sent = SENT_DAH;
     key_on();
-    uint32_t len = dash_len();
+    uint32_t len = dah_element_ms();
     if (first_element) {
         len += sys_config.first_extension;
         first_element = false;
@@ -426,11 +468,213 @@ static void paddle_echo_service(uint32_t now, bool paddle_down) {
     }
 }
 
+enum { NO_CLOSURE, DIT_CLOSURE_DAH_OFF, DAH_CLOSURE_DIT_OFF, DIT_CLOSURE_DAH_ON, DAH_CLOSURE_DIT_ON };
+static uint8_t last_closure = NO_CLOSURE;
+
+/* K3NG check_paddles(): sample both paddles by level; in ultimatic mode also
+ * run its closure (last-touch priority) logic on the memories. */
+static void check_paddles(bool raw_dit, bool raw_dash) {
+    if (raw_dit) dit_latched = true;
+    if (raw_dash) dash_latched = true;
+    if (sys_config.mode != KEYER_MODE_ULTIMATE) {
+        return;
+    }
+    switch (last_closure) {
+        case DIT_CLOSURE_DAH_OFF:
+            if (dash_latched) {
+                if (dit_latched) { last_closure = DAH_CLOSURE_DIT_ON; dit_latched = false; }
+                else             { last_closure = DAH_CLOSURE_DIT_OFF; }
+            } else if (!dit_latched) {
+                last_closure = NO_CLOSURE;
+            }
+            break;
+        case DIT_CLOSURE_DAH_ON:
+            if (dit_latched) {
+                if (dash_latched) { dash_latched = false; }
+                else              { last_closure = DIT_CLOSURE_DAH_OFF; }
+            } else if (dash_latched) {
+                /* the dit just ended: only queue the dah if that paddle is still held */
+                if (raw_dash) { last_closure = DAH_CLOSURE_DIT_OFF; }
+                else          { dash_latched = false; last_closure = NO_CLOSURE; }
+            } else {
+                last_closure = NO_CLOSURE;
+            }
+            break;
+        case DAH_CLOSURE_DIT_OFF:
+            if (dit_latched) {
+                if (dash_latched) { last_closure = DIT_CLOSURE_DAH_ON; dash_latched = false; }
+                else              { last_closure = DIT_CLOSURE_DAH_OFF; }
+            } else if (!dash_latched) {
+                last_closure = NO_CLOSURE;
+            }
+            break;
+        case DAH_CLOSURE_DIT_ON:
+            if (dash_latched) {
+                if (dit_latched) { dit_latched = false; }
+                else             { last_closure = DAH_CLOSURE_DIT_OFF; }
+            } else if (dit_latched) {
+                if (raw_dit) { last_closure = DIT_CLOSURE_DAH_OFF; }
+                else         { dit_latched = false; last_closure = NO_CLOSURE; }
+            } else {
+                last_closure = NO_CLOSURE;
+            }
+            break;
+        default: /* NO_CLOSURE */
+            if (dit_latched && !dash_latched) {
+                last_closure = DIT_CLOSURE_DAH_OFF;
+            } else if (dash_latched && !dit_latched) {
+                last_closure = DAH_CLOSURE_DIT_OFF;
+            } else if (dit_latched && dash_latched) {
+                last_closure = DIT_CLOSURE_DAH_ON;      /* dit first */
+                dash_latched = false;
+            }
+            break;
+    }
+}
+
+/* What K3NG does while an element or its gap is timed: look at the opposite
+ * paddle only. */
+static void sample_during_send(bool raw_dit, bool raw_dash) {
+    if (sys_config.mode == KEYER_MODE_IAMBIC_A && raw_dit && raw_dash) {
+        iambic_flag = true;
+    }
+    if (being_sent == SENT_DIT) {
+        if (raw_dash) dash_latched = true;
+    } else if (being_sent == SENT_DAH) {
+        if (raw_dit) dit_latched = true;
+    } else {
+        if (raw_dash) dash_latched = true;
+        if (raw_dit) dit_latched = true;
+    }
+}
+
+/* Iambic A: a squeeze that is gone by the end of the element leaves no memory. */
+static void iambic_a_check(bool raw_dit, bool raw_dash) {
+    if (sys_config.mode == KEYER_MODE_IAMBIC_A && iambic_flag && !raw_dit && !raw_dash) {
+        iambic_flag = false;
+        dit_latched = false;
+        dash_latched = false;
+    }
+}
+
+/* Bug mode: the dah is a manual key-down for as long as the paddle is held. */
+static void bug_dah_service(bool raw_dash) {
+    if (dash_latched) {
+        dash_latched = false;
+        /* K3NG keys down for a few microseconds on a stale memory (paddle
+         * touched during a dit and already released); here that would be a
+         * 1 ms pulse on the TX line, so require the paddle to still be held. */
+        if (!bug_dah_flag && raw_dash) {
+            bug_dah_flag = true;
+            key_on();
+        }
+    } else if (bug_dah_flag) {
+        bug_dah_flag = false;
+        key_off();
+    }
+}
+
+/* K3NG service_dit_dah_buffers() as run from its main loop with nothing being
+ * sent: the dit memory first, then the dah memory. */
+static void idle_service(uint32_t now, bool raw_dit, bool raw_dash) {
+    iambic_a_check(raw_dit, raw_dash);
+    if (sys_config.mode == KEYER_MODE_BUG) {
+        if (dit_latched) {
+            start_dit(now);
+        } else {
+            bug_dah_service(raw_dash);
+        }
+        return;
+    }
+    if (dit_latched) {
+        start_dit(now);
+    } else if (dash_latched) {
+        start_dash(now);
+    }
+}
+
+/* An element, its gap (and autospace) are over. K3NG then, in one service
+ * call, sends the remembered dah straight after a dit; otherwise its main loop
+ * comes round again, which samples the paddles a second time at this instant
+ * before the next element is chosen. */
+static void element_finished(uint32_t now, uint8_t after, bool raw_dit, bool raw_dash) {
+    check_paddles(raw_dit, raw_dash);
+    if (after == SENT_DIT) {
+        if (sys_config.mode == KEYER_MODE_BUG) {
+            bug_dah_service(raw_dash);
+        } else if (dash_latched) {
+            start_dash(now);
+            return;
+        }
+    }
+    check_paddles(raw_dit, raw_dash);
+    idle_service(now, raw_dit, raw_dash);
+}
+
+static void keyer_paddles(uint32_t now, bool raw_dit, bool raw_dash) {
+    if (sys_config.mode == KEYER_MODE_STRAIGHT) {
+        being_sent = SENT_NONE;
+        if (raw_dit || raw_dash) {
+            key_on();
+            current_state = STATE_DIT;
+        } else {
+            key_off();
+            current_state = STATE_IDLE;
+            first_element = true;
+        }
+        return;
+    }
+
+    if (sys_config.mode != KEYER_MODE_BUG && bug_dah_flag) {
+        bug_dah_flag = false;               /* mode changed while the bug dah was down */
+        key_off();
+    }
+
+    if (current_state == STATE_IDLE) {
+        check_paddles(raw_dit, raw_dash);
+        if (!dit_latched && !dash_latched && !bug_dah_flag) {
+            first_element = true;
+        }
+        idle_service(now, raw_dit, raw_dash);
+        return;
+    }
+
+    sample_during_send(raw_dit, raw_dash);
+
+    if ((current_state == STATE_DIT || current_state == STATE_DASH) && now >= state_timer) {
+        key_off();
+        iambic_a_check(raw_dit, raw_dash);
+        state_timer = now + (being_sent == SENT_DAH ? dah_gap_ms() : dit_gap_ms());
+        current_state = STATE_ELEMENT_SPACE;
+    }
+
+    if (current_state == STATE_ELEMENT_SPACE && now >= state_timer) {
+        iambic_a_check(raw_dit, raw_dash);
+        if (sys_config.autospace) {
+            check_paddles(raw_dit, raw_dash);
+            if (!dit_latched && !dash_latched) {
+                state_timer = now + autospace_ms();
+                current_state = STATE_AUTOSPACE;
+                return;
+            }
+        }
+    } else if (current_state == STATE_AUTOSPACE && now >= state_timer) {
+        iambic_a_check(raw_dit, raw_dash);
+    } else {
+        return;                              /* still timing the element, gap or autospace */
+    }
+
+    /* element, gap and autospace are over */
+    uint8_t after = being_sent;
+    being_sent = SENT_NONE;
+    current_state = STATE_IDLE;
+    element_finished(now, after, raw_dit, raw_dash);
+}
+
 /* Contact debounce: a level is accepted once it has been stable for this long. */
 #define PADDLE_DEBOUNCE_MS 2
 typedef struct { bool state, cand; uint32_t since; } Debounce;
 static Debounce deb_dit, deb_dash;
-static bool prev_dit, prev_dash;
 
 static bool debounce(Debounce *d, bool in, uint32_t now) {
     if (in != d->cand) {
@@ -450,11 +694,6 @@ void keyer_tick(void) {
     bool raw_dit  = sys_config.paddle_swap ? pin_dash : pin_dit;
     bool raw_dash = sys_config.paddle_swap ? pin_dit  : pin_dash;
     bool paddle_down = raw_dit || raw_dash;
-    /* a new touch, as opposed to a paddle that is still held down */
-    bool edge_dit  = raw_dit  && !prev_dit;
-    bool edge_dash = raw_dash && !prev_dash;
-    prev_dit = raw_dit;
-    prev_dash = raw_dash;
 
     tick_now = now;
     tx_pull();
@@ -480,126 +719,5 @@ void keyer_tick(void) {
 
     paddle_echo_service(now, paddle_down);
 
-    if (sys_config.mode == KEYER_MODE_STRAIGHT) {
-        if (raw_dit || raw_dash) {
-            key_on();
-            current_state = STATE_DIT;
-        } else {
-            key_off();
-            current_state = STATE_IDLE;
-            first_element = true;
-        }
-        return;
-    }
-
-    if (sys_config.mode == KEYER_MODE_BUG) {
-        if (raw_dash) {
-            key_on();
-            current_state = STATE_DASH;
-            dit_latched = false;
-            return;
-        }
-        if (current_state == STATE_DASH && !raw_dash) {
-            key_off();
-            current_state = STATE_IDLE;
-            first_element = true;
-        }
-    }
-
-    /* Paddle memory. The paddle that started the current element must not
-     * latch a second one from the same touch: start_dit() clears the latch, and
-     * a level-sensitive latch would set it again on the next tick while the
-     * paddle is still down, so even a short tap sent two elements. That paddle
-     * latches on a fresh touch only (a paddle still held at the end of the
-     * element repeats via the raw-level checks below). The opposite paddle
-     * latches by level, so a squeeze is remembered for iambic B. From idle
-     * either paddle latches. */
-    bool idle = current_state == STATE_IDLE;
-    if (raw_dit && (edge_dit || idle || !last_was_dit)) {
-        dit_latched = true;
-    }
-    if (raw_dash && (edge_dash || idle || last_was_dit)) {
-        dash_latched = true;
-    }
-
-    uint32_t unit = dit_unit();
-
-    switch (current_state) {
-        case STATE_IDLE:
-            first_element = true;
-            if (dit_latched) {
-                start_dit(now);
-            } else if (dash_latched) {
-                start_dash(now);
-            }
-            break;
-
-        case STATE_DIT:
-        case STATE_DASH:
-            if (now >= state_timer) {
-                key_off();
-                state_timer = now + unit;
-                current_state = STATE_ELEMENT_SPACE;
-            }
-            break;
-
-        case STATE_ELEMENT_SPACE:
-            if (now < state_timer) {
-                break;
-            }
-            if (sys_config.mode == KEYER_MODE_ULTIMATE) {
-                if (raw_dit && !raw_dash) {
-                    start_dit(now);
-                } else if (raw_dash && !raw_dit) {
-                    start_dash(now);
-                } else if (raw_dit && raw_dash) {
-                    if (last_was_dit) {
-                        start_dit(now);
-                    } else {
-                        start_dash(now);
-                    }
-                } else if (dit_latched) {
-                    start_dit(now);
-                } else if (dash_latched) {
-                    start_dash(now);
-                } else {
-                    current_state = STATE_IDLE;
-                    dit_latched = false;
-                    dash_latched = false;
-                }
-                break;
-            }
-
-            if (sys_config.mode == KEYER_MODE_IAMBIC_A) {
-                dit_latched = raw_dit;
-                dash_latched = raw_dash;
-            }
-
-            bool squeeze = raw_dit && raw_dash;
-            if (squeeze || (dit_latched && dash_latched) ||
-                (last_was_dit && dash_latched) || (!last_was_dit && dit_latched)) {
-                if (last_was_dit) {
-                    start_dash(now);
-                } else {
-                    start_dit(now);
-                }
-            } else if (dit_latched || raw_dit) {
-                start_dit(now);
-            } else if (dash_latched || raw_dash) {
-                start_dash(now);
-            } else if (sys_config.autospace) {
-                current_state = STATE_IDLE;
-            } else {
-                current_state = STATE_IDLE;
-            }
-            if (current_state == STATE_IDLE) {
-                dit_latched = false;
-                dash_latched = false;
-            }
-            break;
-
-        default:
-            current_state = STATE_IDLE;
-            break;
-    }
+    keyer_paddles(now, raw_dit, raw_dash);
 }
