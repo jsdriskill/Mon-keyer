@@ -426,12 +426,35 @@ static void paddle_echo_service(uint32_t now, bool paddle_down) {
     }
 }
 
+/* Contact debounce: a level is accepted once it has been stable for this long. */
+#define PADDLE_DEBOUNCE_MS 2
+typedef struct { bool state, cand; uint32_t since; } Debounce;
+static Debounce deb_dit, deb_dash;
+static bool prev_dit, prev_dash;
+
+static bool debounce(Debounce *d, bool in, uint32_t now) {
+    if (in != d->cand) {
+        d->cand = in;
+        d->since = now;
+    } else if (in != d->state && (uint32_t)(now - d->since) >= PADDLE_DEBOUNCE_MS) {
+        d->state = in;
+    }
+    return d->state;
+}
+
 void keyer_tick(void) {
     uint32_t now = to_ms_since_boot(get_absolute_time());
 
-    bool raw_dit = !gpio_get(sys_config.paddle_swap ? PIN_PADDLE_DASH : PIN_PADDLE_DIT);
-    bool raw_dash = !gpio_get(sys_config.paddle_swap ? PIN_PADDLE_DIT : PIN_PADDLE_DASH);
+    bool pin_dit  = debounce(&deb_dit,  !gpio_get(PIN_PADDLE_DIT),  now);
+    bool pin_dash = debounce(&deb_dash, !gpio_get(PIN_PADDLE_DASH), now);
+    bool raw_dit  = sys_config.paddle_swap ? pin_dash : pin_dit;
+    bool raw_dash = sys_config.paddle_swap ? pin_dit  : pin_dash;
     bool paddle_down = raw_dit || raw_dash;
+    /* a new touch, as opposed to a paddle that is still held down */
+    bool edge_dit  = raw_dit  && !prev_dit;
+    bool edge_dash = raw_dash && !prev_dash;
+    prev_dit = raw_dit;
+    prev_dash = raw_dash;
 
     tick_now = now;
     tx_pull();
@@ -483,10 +506,16 @@ void keyer_tick(void) {
         }
     }
 
-    if (raw_dit) {
+    /* Paddle memory. The touch that started the current element must not
+     * latch a second one: start_dit() clears the latch, and a level-sensitive
+     * latch would set it again on the next tick while the paddle is still down,
+     * so even a short tap sent two elements. Latch on a fresh touch only (or
+     * from idle); a paddle still held at the end of the element repeats via
+     * the raw-level checks below. */
+    if (raw_dit && (edge_dit || current_state == STATE_IDLE)) {
         dit_latched = true;
     }
-    if (raw_dash) {
+    if (raw_dash && (edge_dash || current_state == STATE_IDLE)) {
         dash_latched = true;
     }
 
